@@ -12,9 +12,17 @@ const app = express();
 app.use(express.json());
 app.use(bot.webhookCallback(`/bot${process.env.BOT_TOKEN}`));
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB connected"))
-  .catch(err => console.log("DB error:", err));
+mongoose.connect(process.env.MONGO_URI, {
+  serverSelectionTimeoutMS: 30000,
+  socketTimeoutMS: 45000,
+  bufferMaxEntries: 0,
+  bufferCommands: false,
+})
+.then(() => console.log("MongoDB connected"))
+.catch(err => {
+  console.log("DB connection failed, retrying in 5s...", err.message);
+  setTimeout(() => mongoose.connect(process.env.MONGO_URI), 5000);
+});
 
 // /start
 bot.start(async (ctx) => {
