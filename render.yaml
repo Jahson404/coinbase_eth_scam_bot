@@ -5,11 +5,13 @@ services:
     region: oregon
     plan: free
     buildCommand: npm ci --only=production --legacy-peer-deps
-    startCommand: node index.js
+    startCommand: node --tls-min-v1.2 index.js
     rootDir: .
     envVars:
       - key: NODE_VERSION
-        value: ~20
+        value: 20.17.0
+      - key: NODE_OPTIONS
+        value: --tls-min-v1.2
       - key: RENDER_EXTERNAL_URL
         generateValue: true
       - key: MONGO_URI
