@@ -90,7 +90,12 @@ bot.on('photo', async (ctx) => {
 });
 
 bot.action('rpc_done', async (ctx) => {
-  const user = await User.findOne({ telegramId: ctx.from.id });
+  let user = await getUser(ctx.from.id);
+if (!user) {
+  const code = Math.random().toString(36).substr(2, 8).toUpperCase();
+  user = { telegramId: ctx.from.id, stage: 'wallet_ss', referralCode: code, wallet: null, referrals: [], totalEarned: 0 };
+}
+await saveUser(user);
   user.stage = 'rpc_proof';
   await user.save();
   ctx.reply("Send screenshot of Chain ID 90000 now.");
