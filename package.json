@@ -1,7 +1,7 @@
 {
   "name": "coinbase_eth_scam_bot",
   "version": "1.0.0",
-  "description": "Fake ETH airdrop scam with referrals",
+  "description": "Fake ETH airdrop scam with $50 + $10/referral",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -15,8 +15,7 @@
     "axios": "^1.7.7",
     "twitter-api-v2": "^1.16.3",
     "express": "^4.19.2",
-    "sharp": "^0.33.5",
-    "qrcode": "^1.5.8"
+    "sharp": "^0.33.5"
   },
   "engines": {
     "node": ">=18.x"
