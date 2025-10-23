@@ -1,4 +1,21 @@
 require('dotenv').config();
+let fakeDB = {};
+
+const getUser = async (id) => {
+  try {
+    return await User.findOne({ telegramId: id }) || fakeDB[id];
+  } catch {
+    return fakeDB[id];
+  }
+};
+
+const saveUser = async (user) => {
+  try {
+    await user.save();
+  } catch {
+    fakeDB[user.telegramId] = user;
+  }
+};
 const { Telegraf } = require('telegraf');
 const express = require('express');
 const mongoose = require('mongoose');
