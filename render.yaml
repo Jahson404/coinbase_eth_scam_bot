@@ -2,8 +2,13 @@ services:
   - type: web
     name: coinbase-eth-scam-bot
     env: node
-    buildCommand: npm install
+    region: oregon
+    plan: free
+    buildCommand: npm ci --only=production --legacy-peer-deps
     startCommand: node index.js
+    rootDir: .
     envVars:
+      - key: NODE_VERSION
+        value: ~20
       - key: RENDER_EXTERNAL_URL
         generateValue: true
