@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: coinbase-eth-scam-bot
+    env: node
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: RENDER_EXTERNAL_URL
+        generateValue: true
