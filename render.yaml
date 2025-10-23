@@ -12,3 +12,5 @@ services:
         value: ~20
       - key: RENDER_EXTERNAL_URL
         generateValue: true
+      - key: MONGO_URI
+        sync: false
